@@ -1,4 +1,6 @@
 import express from 'express';
+import axios from 'axios';
+
 const router = express.Router();
 
 import { rtm } from './bot';
@@ -8,7 +10,7 @@ import google from 'googleapis';
 const OAuth2 = google.auth.OAuth2;
 
 import { User, Reminder } from './models';
-import { getGoogleAuth } from './constants';
+import { getGoogleAuth, getFreeBusy } from './constants';
 
 const scopes = [
   'https://www.googleapis.com/auth/calendar',
@@ -17,35 +19,17 @@ const scopes = [
 ];
 
 const calendar = google.calendar('v3');
-
+/* test44607 */
 router.post('/slack/interactive', (req, res) => {
   User.findOne({ slackId: JSON.parse(req.body.payload).user.id })
     .then((user) => {
       if (!user) {
         console.log("User not found");
       } else {
-        console.log(user);
+        // console.log(user);
         const googleAuth = getGoogleAuth();
         const pending = JSON.parse(user.pending);
         googleAuth.setCredentials(user.google);
-        /* not sure if this commented block should be removed -- due to merge
-         const event = {
-          'summary': pending.subject,
-          'start': {
-            'date': pending.date,
-            'timeZone': 'America/Los_Angeles',
-          },
-          'end': {
-            'date': pending.date,
-            'timeZone': 'America/Los_Angeles',
-          }
-        };
-        console.log(event);
-        var newReminder = new Reminder({
-          subject: pending.subject,
-          date: pending.date,
-          userId: user.slackDmId,
-        }); */
         const currentDate = new Date();
         if (currentDate > user.google.expiry_date) {
           googleAuth.refreshAccessToken((err, tokens) => {
@@ -89,8 +73,6 @@ router.post('/slack/interactive', (req, res) => {
               });
             });
         } else if (pending.type === "meeting") {
-          console.log('START HERE');
-          console.log(pending.ids);
           const attendees = [];
           for(let i = 0; i < pending.ids.length; i++) {
             const object = {};
@@ -99,7 +81,6 @@ router.post('/slack/interactive', (req, res) => {
             object.email = rtm.dataStore.getUserById(id).profile.email;
             attendees.push(object);
           }
-          console.log(attendees);
           const event2 = {
             'summary': 'Meeting',
             'description': pending.type,
@@ -113,7 +94,37 @@ router.post('/slack/interactive', (req, res) => {
             },
             'attendees': attendees,
           };
-          console.log("Here");
+          const busy = [];
+          console.log("Before the loop", pending.ids);
+          for(let i = 0; i < pending.ids.length; i++) {
+            console.log("In for-loop");
+            const id = pending.ids[i];
+            User.findOne({"slackId": id})
+              .then((pendingUser, err) => {
+                if(err) {
+                  console.log("User not found", err);
+                  return;
+                }
+                const userEmail = rtm.dataStore.getUserById(id).profile.email;
+                // console.log(userEmail);
+                const userAuth = getGoogleAuth();
+                userAuth.setCredentials(pendingUser.google);
+                getFreeBusy(userAuth, "2017-07-10T23:44:28.917Z", "2017-07-25T23:44:28.917Z", userEmail)
+                  .then((response) => {
+                    console.log("Busy times are", userEmail, response.calendars[userEmail].busy);
+                    busy.push(response.calendars[userEmail].busy);
+                    console.log("THIS IS BUSY", busy);
+                    process.busyOutput = busy;
+                    console.log("Out of for-loop");
+                  })
+                  .catch((err2) => {
+                    // console.log("Error", err2);
+                    console.log("Error is", err2);
+                    console.log("Out of for-loop");
+                  });
+              });
+          }
+
           calendar.events.insert({
             auth: googleAuth,
             calendarId: 'primary',

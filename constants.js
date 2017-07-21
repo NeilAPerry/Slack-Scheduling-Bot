@@ -1,6 +1,7 @@
 import google from 'googleapis';
 
 const OAuth2 = google.auth.OAuth2;
+const calendar = google.calendar('v3');
 
 const messageConfirmation = (confirmation, cancellation) => ({
   "text": "Is this correct?",
@@ -47,4 +48,25 @@ const getQueryParams = (msg, sessionId) => ({
   sessionId: sessionId
 });
 
-export { messageConfirmation, getQueryParams, getGoogleAuth };
+const getFreeBusy = (auth, timeMin, timeMax, id) => (
+  new Promise( (resolve, reject) => {
+    calendar.freebusy.query({
+      auth: auth,
+      resource: {
+        timeMin: timeMin,
+        timeMax: timeMax,
+        items: [{
+          id: id
+        }]
+      }
+    }, (err, result) => {
+      if(err) {
+        reject(err);
+      } else {
+        resolve(result);
+      }
+    });
+  })
+);
+
+export { messageConfirmation, getQueryParams, getGoogleAuth, getFreeBusy };
